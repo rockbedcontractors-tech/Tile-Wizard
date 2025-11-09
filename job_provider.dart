@@ -39,17 +39,19 @@ class JobProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- CREATE (Fixed with Deep Copy Pattern) ---
-  Future<Job> addJob(Job unmanagedJob) async {
-    // 1. Get the linked objects *before* the transaction
-    final Client? clientToLink = unmanagedJob.client.value;
-    final MaterialPackage? packageToLink = unmanagedJob.selectedPackage.value;
-
+  // --- CREATE (Fixed with Clean Object Pattern) ---
+  Future<Job> addJob(
+    Job unmanagedJob, // This job is 100% clean (no links)
+    Client? clientToLink,
+    MaterialPackage? packageToLink,
+  ) async {
     late int newId;
 
     // --- Transaction 1: Create the job with deep-copied data ---
     await isar.writeTxn(() async {
-      // Create a new, clean Job object and DEEP COPY all data
+      // The deep copy of embedded objects IS the correct pattern here.
+      // Your old code was fine, but it was being passed a
+      // contaminated object. Now it will be passed a clean one.
       final Job newJob = Job(
           jobUUID: unmanagedJob.jobUUID,
           creationDate: unmanagedJob.creationDate,
@@ -121,15 +123,12 @@ class JobProvider extends ChangeNotifier {
           selfLevelerYield: unmanagedJob.selfLevelerYield,
           selfLevelerThickness: unmanagedJob.selfLevelerThickness);
 
-      // Save the clean, deep-copied job. This will work.
+      // This will now work, as newJob is 100% clean.
       newId = await isar.jobs.put(newJob);
     });
 
-    // Now the job exists in the DB (managed).
-
-    late Job newManagedJob;
-
     // --- Transaction 2: Fetch the new job and attach its links ---
+    late Job newManagedJob;
     await isar.writeTxn(() async {
       newManagedJob = (await isar.jobs.get(newId))!;
 
@@ -137,7 +136,7 @@ class JobProvider extends ChangeNotifier {
       newManagedJob.client.value = clientToLink;
       newManagedJob.selectedPackage.value = packageToLink;
 
-      // Put the job AGAIN. This is what saves the link associations.
+      // Save the links
       await isar.jobs.put(newManagedJob);
     });
 
@@ -147,14 +146,12 @@ class JobProvider extends ChangeNotifier {
     return _jobs.firstWhere((j) => j.id == newId);
   }
 
-  // --- UPDATE (Fixed with Deep Copy) ---
-  Future<void> updateJob(Job unmanagedJob) async {
-    // 'unmanagedJob' is the copy from our editor.
-
-    // Get the linked objects *before* the transaction
-    final Client? client = unmanagedJob.client.value;
-    final MaterialPackage? package = unmanagedJob.selectedPackage.value;
-
+  // --- UPDATE (Fixed with Clean Object Pattern) ---
+  Future<void> updateJob(
+    Job unmanagedJob, // 'unmanagedJob' is the clean copy from our editor.
+    Client? client,
+    MaterialPackage? package,
+  ) async {
     await isar.writeTxn(() async {
       // Fetch the REAL, MANAGED job from the database
       final managedJob = await isar.jobs.get(unmanagedJob.id);
@@ -201,6 +198,7 @@ class JobProvider extends ChangeNotifier {
               method: payment.method))
           .toList();
 
+      // Copy all other fields
       managedJob.quoteNumber = unmanagedJob.quoteNumber;
       managedJob.invoiceNumber = unmanagedJob.invoiceNumber;
       managedJob.hidePrice = unmanagedJob.hidePrice;
@@ -249,7 +247,6 @@ class JobProvider extends ChangeNotifier {
   }
 
   // --- Getters (no changes) ---
-
   List<Job> get overdueJobs {
     final now = DateTime.now();
     return _jobs.where((job) {
