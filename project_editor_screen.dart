@@ -7,6 +7,8 @@ import 'package:tile_wizard/models/client_model.dart';
 import 'package:tile_wizard/models/job_area_model.dart';
 import 'package:tile_wizard/models/job_model.dart';
 import 'package:tile_wizard/models/line_item_group.dart';
+import 'package:tile_wizard/models/material_package_model.dart'; // Import this
+import 'package:tile_wizard/models/sub_measurement.dart'; // Import this
 import 'package:tile_wizard/providers/job_provider.dart';
 import 'package:tile_wizard/screens/client_list_screen.dart';
 import 'package:tile_wizard/screens/result_screen.dart';
@@ -27,8 +29,10 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
   late Job _currentJob;
   bool _isLoading = true;
 
-  // We no longer need _localSelectedClient
-  // Client? _localSelectedClient;
+  // --- THIS IS THE CORRECTED LOCAL STATE ---
+  Client? _localSelectedClient;
+  MaterialPackage? _localSelectedPackage;
+  // --- END OF FIX ---
 
   late TextEditingController _projectNameController;
   late TextEditingController _wastagePercentController;
@@ -51,16 +55,48 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
           .read<JobProvider>()
           .jobs
           .firstWhere((j) => j.id == widget.jobId);
+
+      // --- FIX: LOAD LINKS LOCALLY, THEN COPY ---
+      // 1. Load the links from the managed job into our local variables
+      _localSelectedClient = existingJob.client.value;
+      _localSelectedPackage = existingJob.selectedPackage.value;
+
+      // 2. Create a clean, unmanaged copy (it won't have links)
+      //    This now works because job_model.dart's copyWith is fixed
       _currentJob = existingJob.copyWith();
+      // --- END OF FIX ---
 
-      // We don't need _localSelectedClient, the client is already
-      // part of the _currentJob.client link
-
-      initialGroups = (_currentJob.itemGroups ?? [])
+      // 3. Deep-copy the embedded lists from the original job
+      initialGroups = (existingJob.itemGroups ?? [])
           .map((group) => LineItemGroup(
                 name: group.name,
-                items: List<CustomLineItem>.from(group.items ?? []),
-                areas: List<JobArea>.from(group.areas ?? []),
+                items: (group.items ?? [])
+                    .map((item) => CustomLineItem(
+                          description: item.description,
+                          subtext: item.subtext,
+                          quantity: item.quantity,
+                          rate: item.rate,
+                          unit: item.unit,
+                          activity: item.activity,
+                          isTaxable: item.isTaxable,
+                        ))
+                    .toList(),
+                areas: (group.areas ?? [])
+                    .map((area) => JobArea(
+                          name: area.name,
+                          sqft: area.sqft,
+                          type: area.type,
+                          subMeasurements: (area.subMeasurements ?? [])
+                              .map((sub) => SubMeasurement(
+                                  length: sub.length,
+                                  width: sub.width,
+                                  unit: sub.unit))
+                              .toList(),
+                          tileLength: area.tileLength,
+                          tileWidth: area.tileWidth,
+                          groutSize: area.groutSize,
+                        ))
+                    .toList(),
               ))
           .toList();
     } else {
@@ -72,6 +108,10 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
         taxRate: 0.0,
         wastagePercent: 10.0,
       );
+      // --- FIX: Initialize local links ---
+      _localSelectedClient = null;
+      _localSelectedPackage = null;
+      // --- END OF FIX ---
       initialGroups = [];
     }
     _currentJob.itemGroups = initialGroups;
@@ -124,6 +164,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     super.dispose();
   }
 
+  // --- THIS IS THE CORRECTED _selectClient METHOD ---
   void _selectClient() async {
     final selectedClient = await Navigator.push<Client>(
       context,
@@ -132,13 +173,16 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     if (selectedClient != null && mounted) {
       setState(() {
         // --- THIS IS THE FIX ---
-        // Attach the client directly to the _currentJob object
-        _currentJob.client.value = selectedClient;
+        // Set the local variable, DO NOT touch _currentJob
+        _localSelectedClient = selectedClient;
+        // REMOVED: _currentJob.client.value = selectedClient;
         // --- END OF FIX ---
       });
     }
   }
+  // --- END OF FIX ---
 
+  // --- THIS IS THE CORRECTED _saveAndNavigate METHOD ---
   void _saveAndNavigate() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) {
@@ -153,14 +197,21 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
         double.tryParse(_wastagePercentController.text);
 
     // --- THIS IS THE FIX ---
-    // The provider's deep-copy logic will handle the links
-    // We just pass the single _currentJob object
+    // _currentJob is now 100% clean. We pass the links as
+    // separate arguments to the provider.
     if (widget.jobId != null) {
-      await jobProvider.updateJob(_currentJob);
+      await jobProvider.updateJob(
+        _currentJob,
+        _localSelectedClient,
+        _localSelectedPackage,
+      );
       jobIdToNavigate = _currentJob.id;
     } else {
-      // The addJob method returns the new, managed job
-      final newManagedJob = await jobProvider.addJob(_currentJob);
+      final newManagedJob = await jobProvider.addJob(
+        _currentJob,
+        _localSelectedClient,
+        _localSelectedPackage,
+      );
       jobIdToNavigate = newManagedJob.id;
     }
     // --- END OF FIX ---
@@ -174,6 +225,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
       );
     }
   }
+  // --- END OF FIX ---
 
   // --- Group/Area/Item Methods (No Changes) ---
   void _addGroup() {
@@ -381,10 +433,11 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     );
   }
 
+  // --- THIS IS THE CORRECTED _buildProjectSetupCard METHOD ---
   Widget _buildProjectSetupCard() {
     // --- THIS IS THE FIX ---
-    // Read from the job's client link value
-    final clientName = _currentJob.client.value?.name ?? 'Select Client';
+    // Read the client name from our local variable
+    final clientName = _localSelectedClient?.name ?? 'Select Client';
     // --- END OF FIX ---
     final primaryColor = Theme.of(context).colorScheme.primary;
     return Card(
@@ -411,7 +464,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: Text(clientName),
+              title: Text(clientName), // <-- Uses our new local var
               trailing:
                   Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
               contentPadding: EdgeInsets.zero,
@@ -427,8 +480,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
       ),
     );
   }
-
-  // --- All other helper methods (_buildGroupsSection, etc.) are correct ---
+  // --- END OF FIX ---
 
   Widget _buildGroupsSection() {
     final groups = _currentJob.itemGroups ?? [];
