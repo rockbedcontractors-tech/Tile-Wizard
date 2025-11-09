@@ -607,10 +607,20 @@ class _ResultScreenState extends State<ResultScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const ClientListScreen()),
               );
-              if (selectedClient != null) {
-                final updatedJob = job.copyWith();
-                updatedJob.client.value = selectedClient;
-                _updateJob(updatedJob);
+              if (selectedClient != null && mounted) {
+                // 1. Create a clean, unmanaged copy of the job
+                final Job cleanCopy = job.copyWith();
+
+                // 2. Get the *original* package link
+                final MaterialPackage? originalPackage =
+                    job.selectedPackage.value;
+
+                // 3. Call the provider DIRECTLY with the clean copy and the new links
+                context.read<JobProvider>().updateJob(
+                    cleanCopy,
+                    selectedClient, // The NEW client
+                    originalPackage // The ORIGINAL package
+                    );
               }
             }),
         const SizedBox(height: 24),
