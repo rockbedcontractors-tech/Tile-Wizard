@@ -10,7 +10,7 @@ import 'package:tile_wizard/models/material_item_model.dart'; // For cost calcul
 
 part 'job_model.g.dart';
 
-// --- ENUMS ---
+// --- ENUMS (All unchanged) ---
 enum PaymentMethod { cash, check, card, ach, other }
 
 extension PaymentMethodExtension on PaymentMethod {
@@ -80,7 +80,7 @@ extension ShowerBaseTypeExtension on ShowerBaseType {
   }
 }
 
-// --- EMBEDDED OBJECTS ---
+// --- EMBEDDED OBJECTS (All unchanged, this is correct) ---
 @embedded
 class CustomLineItem {
   String? description;
@@ -119,9 +119,9 @@ class Job {
   String? jobUUID;
   final client = IsarLink<Client>();
   DateTime? creationDate;
+  List<LineItemGroup>? itemGroups; // This is correct (list of embedded)
+  List<Payment>? payments; // This is correct (list of embedded)
   String? publicNotes;
-  List<LineItemGroup>? itemGroups;
-  List<Payment>? payments;
   @Index()
   String? quoteNumber;
   @Index()
@@ -163,11 +163,11 @@ class Job {
   WaterproofingType floorWaterproofingType;
 
   // --- Advanced Calculator Fields ---
-  double? thinsetCoverage; // Stored as sqft/bag (derived from Trowel)
-  double? tileThickness; // For grout calculation (inches)
+  double? thinsetCoverage;
+  double? tileThickness;
   double? clipSpacing;
-  double? selfLevelerYield; // e.g., 0.45
-  double? selfLevelerThickness; // e.g., 0.125
+  double? selfLevelerYield;
+  double? selfLevelerThickness;
 
   Job({
     this.jobUUID,
@@ -210,9 +210,10 @@ class Job {
     this.selfLevelerThickness,
   });
 
+  // --- THIS IS THE CORRECTED copyWith METHOD ---
   Job copyWith({
     String? jobUUID,
-    IsarLink<Client>? client,
+    // IsarLink<Client>? client, // REMOVED
     DateTime? creationDate,
     String? publicNotes,
     List<LineItemGroup>? itemGroups,
@@ -241,7 +242,7 @@ class Job {
     DateTime? expirationDate,
     String? contractFilePath,
     JobStatus? status,
-    MaterialPackage? selectedPackageValue,
+    // MaterialPackage? selectedPackageValue, // REMOVED
     BackerboardType? backerboardType,
     WaterproofingType? wallWaterproofingType,
     ShowerBaseType? showerBaseType,
@@ -256,8 +257,8 @@ class Job {
       jobUUID: jobUUID ?? this.jobUUID,
       creationDate: creationDate ?? this.creationDate,
       publicNotes: publicNotes ?? this.publicNotes,
-      itemGroups: itemGroups ?? this.itemGroups,
-      payments: payments ?? this.payments,
+      itemGroups: itemGroups ?? this.itemGroups, // Deep copy happens in editor
+      payments: payments ?? this.payments, // Deep copy happens in editor
       quoteNumber: quoteNumber ?? this.quoteNumber,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
       hidePrice: hidePrice ?? this.hidePrice,
@@ -296,14 +297,22 @@ class Job {
       selfLevelerThickness: selfLevelerThickness ?? this.selfLevelerThickness,
     );
     newJob.id = id;
-    newJob.client.value = client?.value ?? this.client.value;
-    newJob.selectedPackage.value =
-        selectedPackageValue ?? selectedPackage.value;
+
+    // --- DO NOT COPY THE LINKS ---
+    // This ensures the new 'unmanaged' copy is 100% clean.
+    // newJob.client.value = client?.value ?? this.client.value; // REMOVED
+    // newJob.selectedPackage.value =
+    //     selectedPackageValue ?? selectedPackage.value; // REMOVED
+    // --- END OF FIX ---
+
     return newJob;
   }
 
-  // --- Calculation getters ---
-
+  // --- Calculation getters (All unchanged) ---
+  // (Your existing getters are fine)
+  // ...
+  // ... ALL YOUR GETTERS ...
+  // ...
   double _getAreaSumByType(List<AreaType> types) {
     return (itemGroups ?? []).fold(0.0, (groupSum, group) {
       final groupAreaSum = (group.areas ?? []).fold(0.0, (areaSum, area) {
@@ -325,7 +334,6 @@ class Job {
   double get totalShowerWallArea => _getAreaSumByType([AreaType.showerWall]);
   double get totalShowerFloorArea => _getAreaSumByType([AreaType.showerFloor]);
 
-  // --- Financial Getters ---
   int get tilesNeeded {
     int totalTiles = 0;
     final groups = itemGroups ?? [];
@@ -532,12 +540,9 @@ class Job {
     return totalVolumeCuIn * (1 + ((wastagePercent ?? 15.0) / 100));
   }
 
-  // --- NEW: Advanced Material COST Getters ---
-
-  /// Helper to get the cost of a single material.
-  /// It multiplies the item's cost by the calculated quantity.
+  // --- Advanced Material COST Getters ---
   double _getMaterialCost(IsarLink<MaterialItem> link, int quantity) {
-    link.loadSync(); // Load the linked item
+    link.loadSync();
     final item = link.value;
     if (item == null || (item.cost ?? 0.0) <= 0 || quantity <= 0) {
       return 0.0;
@@ -546,21 +551,14 @@ class Job {
     final double cost = item.cost!;
     final int itemsPerUnit = item.itemsPerUnit ?? 0;
 
-    // --- THIS IS THE NEW LOGIC ---
     if (itemsPerUnit > 0) {
-      // This is for clips/screws.
-      // (quantityNeeded / itemsPerUnit) = bagsNeeded
-      // We use ceiling to round up to the next full bag/bucket.
       final bagsNeeded = (quantity / itemsPerUnit).ceil();
       return bagsNeeded * cost;
     }
     return (item.cost!) * quantity;
   }
 
-  /// Calculates the total estimated cost of all advanced materials
-  /// based on the selected package.
   double get totalAdvancedMaterialCost {
-    // Ensure the package link itself is loaded
     selectedPackage.loadSync();
     final pkg = selectedPackage.value;
     if (pkg == null) {
@@ -569,7 +567,6 @@ class Job {
 
     double totalCost = 0.0;
 
-    // Iterate over each material type, get its cost, and add to total
     totalCost += _getMaterialCost(pkg.thinset, bagsOfThinsetNeeded);
     totalCost += _getMaterialCost(pkg.grout, bagsOfGroutNeeded);
     totalCost += _getMaterialCost(pkg.backerboard, sheetsOfBackerboardNeeded);
@@ -578,7 +575,6 @@ class Job {
     totalCost += _getMaterialCost(pkg.floorMembrane, rollsOfSheetWaterproofing);
     totalCost += _getMaterialCost(pkg.leveler, bagsOfSelfLevelerNeeded);
     totalCost += _getMaterialCost(pkg.clips, levelingClipsNeeded);
-    // Note: We're missing sealant. We can add it to the package model later if needed.
 
     return totalCost;
   }
