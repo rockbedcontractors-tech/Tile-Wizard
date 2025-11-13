@@ -1,17 +1,15 @@
 // lib/screens/result_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:tile_wizard/models/client_model.dart';
 import 'package:tile_wizard/models/job_model.dart';
 import 'package:tile_wizard/models/line_item_group.dart';
 import 'package:tile_wizard/providers/job_provider.dart';
 import 'package:tile_wizard/providers/profile_provider.dart';
 import 'package:tile_wizard/screens/advanced_calculator_screen.dart';
 import 'package:tile_wizard/screens/client_list_screen.dart';
-import 'package:tile_wizard/screens/pdf_preview_screen.dart';
 import 'package:tile_wizard/screens/project_editor_screen.dart';
+import 'package:tile_wizard/screens/pdf_preview_screen.dart';
 import 'package:tile_wizard/screens/widgets/add_payment_dialog.dart';
 import 'package:tile_wizard/screens/widgets/advanced_materials_results_card.dart';
 import 'package:tile_wizard/screens/widgets/app_drawer.dart';
@@ -21,7 +19,8 @@ import 'package:tile_wizard/screens/widgets/floating_action_buttons.dart';
 import 'package:tile_wizard/screens/widgets/material_breakdown_card.dart';
 import 'package:tile_wizard/screens/widgets/payments_card.dart';
 import 'package:tile_wizard/screens/widgets/pdf_options_card.dart';
-import 'package:tile_wizard/models/material_package_model.dart';
+import 'package:tile_wizard/models/client_model.dart';
+import 'package:intl/intl.dart';
 
 enum ResultView { overview, details }
 
@@ -97,21 +96,8 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   void _updateJob(Job updatedJob) {
-    // 'updatedJob' is the unmanaged copy
     if (!mounted) return;
-
-    final jobProvider = context.read<JobProvider>();
-
-    // 1. Find the ORIGINAL managed job from the provider's list
-    final originalJob =
-        jobProvider.jobs.firstWhere((j) => j.id == updatedJob.id);
-
-    // 2. Get the links from the ORIGINAL job
-    final Client? client = originalJob.client.value;
-    final MaterialPackage? package = originalJob.selectedPackage.value;
-
-    // 3. Call updateJob with all 3 arguments
-    jobProvider.updateJob(updatedJob, client, package);
+    context.read<JobProvider>().updateJob(updatedJob);
   }
 
   // --- Helper Methods ---
@@ -607,20 +593,10 @@ class _ResultScreenState extends State<ResultScreen> {
                 context,
                 MaterialPageRoute(builder: (_) => const ClientListScreen()),
               );
-              if (selectedClient != null && mounted) {
-                // 1. Create a clean, unmanaged copy of the job
-                final Job cleanCopy = job.copyWith();
-
-                // 2. Get the *original* package link
-                final MaterialPackage? originalPackage =
-                    job.selectedPackage.value;
-
-                // 3. Call the provider DIRECTLY with the clean copy and the new links
-                context.read<JobProvider>().updateJob(
-                    cleanCopy,
-                    selectedClient, // The NEW client
-                    originalPackage // The ORIGINAL package
-                    );
+              if (selectedClient != null) {
+                final updatedJob = job.copyWith();
+                updatedJob.client.value = selectedClient;
+                _updateJob(updatedJob);
               }
             }),
         const SizedBox(height: 24),
