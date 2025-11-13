@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:tile_wizard/models/client_model.dart'; // Import this
 import 'package:tile_wizard/models/job_model.dart';
 import 'package:tile_wizard/models/material_package_model.dart';
 import 'package:tile_wizard/providers/job_provider.dart';
@@ -29,13 +28,9 @@ class AdvancedCalculatorScreen extends StatefulWidget {
 
 class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
   final _formKey = GlobalKey<FormState>();
-  late Job _job; // This will be our unmanaged copy
+  late Job _job;
 
-  // --- FIX: Local variables for links ---
-  Client? _localSelectedClient;
-  MaterialPackage? _localSelectedPackage;
-  // --- END OF FIX ---
-
+  MaterialPackage? _selectedPackage;
   BackerboardType _backerboardType = BackerboardType.none;
   WaterproofingType _wallWaterproofingType = WaterproofingType.none;
   ShowerBaseType _showerBaseType = ShowerBaseType.none;
@@ -52,21 +47,12 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
   @override
   void initState() {
     super.initState();
-    // --- FIX: Use Clean Object pattern ---
-    // 1. Get the original managed job
-    final originalJob = context
+    _job = context
         .read<JobProvider>()
         .jobs
         .firstWhere((j) => j.id == widget.jobId);
 
-    // 2. Make a clean, unmanaged copy
-    _job = originalJob.copyWith(); // This is now clean
-
-    // 3. Store the links locally
-    _localSelectedClient = originalJob.client.value;
-    _localSelectedPackage = originalJob.selectedPackage.value;
-
-    // 4. Set state from the unmanaged copy
+    _selectedPackage = _job.selectedPackage.value;
     _backerboardType = _job.backerboardType;
     _wallWaterproofingType = _job.wallWaterproofingType;
     _showerBaseType = _job.showerBaseType;
@@ -87,7 +73,6 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
         TextEditingController(text: _job.clipSpacing?.toString() ?? '4');
     _tileThicknessController =
         TextEditingController(text: _job.tileThickness?.toString() ?? '0.25');
-    // --- END OF FIX ---
   }
 
   @override
@@ -107,29 +92,20 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
     final double selectedThinsetCoverage =
         thinsetTrowelCoverage[_thinsetTrowelSize] ?? 85.0;
 
-    // --- FIX: Mutate the _job copy directly ---
-    // (We removed the _job.copyWith call)
-    _job.backerboardType = _backerboardType;
-    _job.wallWaterproofingType = _wallWaterproofingType;
-    _job.showerBaseType = _showerBaseType;
-    _job.floorWaterproofingType = _floorWaterproofingType;
-    _job.thinsetCoverage = selectedThinsetCoverage;
-    _job.selfLevelerYield =
-        double.tryParse(_levelerYieldController.text) ?? 0.45;
-    _job.selfLevelerThickness =
-        parseMixedNumber(_levelerThicknessController.text);
-    _job.clipSpacing = parseMixedNumber(_clipSpacingController.text);
-    _job.tileThickness = parseMixedNumber(_tileThicknessController.text);
-    // --- END OF FIX ---
+    final updatedJob = _job.copyWith(
+      selectedPackageValue: _selectedPackage,
+      backerboardType: _backerboardType,
+      wallWaterproofingType: _wallWaterproofingType,
+      showerBaseType: _showerBaseType,
+      floorWaterproofingType: _floorWaterproofingType,
+      thinsetCoverage: selectedThinsetCoverage,
+      selfLevelerYield: double.tryParse(_levelerYieldController.text) ?? 0.45,
+      selfLevelerThickness: parseMixedNumber(_levelerThicknessController.text),
+      clipSpacing: parseMixedNumber(_clipSpacingController.text),
+      tileThickness: parseMixedNumber(_tileThicknessController.text),
+    );
 
-    // --- FIX: Call updateJob with all 3 arguments ---
-    context.read<JobProvider>().updateJob(
-          _job, // The mutated, clean copy
-          _localSelectedClient, // The client link
-          _localSelectedPackage, // The package link
-        );
-    // --- END OF FIX ---
-
+    context.read<JobProvider>().updateJob(updatedJob);
     Navigator.of(context).pop();
   }
 
@@ -144,20 +120,6 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
         }
       });
     }
-
-    // --- THIS IS THE FIX ---
-    // Read from _localSelectedPackage
-    MaterialPackage? validSelectedPackage;
-    if (_localSelectedPackage != null) {
-      try {
-        validSelectedPackage = materialProvider.packages
-            .firstWhere((pkg) => pkg.id == _localSelectedPackage!.id);
-      } catch (e) {
-        // Not found in the list, so set to null
-        validSelectedPackage = null;
-      }
-    }
-    // --- END OF FIX ---
 
     return Scaffold(
       appBar: AppBar(
@@ -179,8 +141,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
             children: [
               // --- Package Selection ---
               DropdownButtonFormField<MaterialPackage>(
-                initialValue:
-                    validSelectedPackage, // Use the validated instance
+                initialValue: _selectedPackage,
                 decoration: const InputDecoration(
                   labelText: 'Material Package',
                   border: OutlineInputBorder(),
@@ -193,16 +154,16 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
                 }).toList(),
                 onChanged: (MaterialPackage? newValue) {
                   setState(() {
-                    _localSelectedPackage = newValue; // Update local var
+                    _selectedPackage = newValue;
                   });
                 },
               ),
               const SizedBox(height: 24),
 
               // --- Backerboard ---
+              // --- REMOVED: _buildSectionHeader(context, 'Backerboard') ---
               DropdownButtonFormField<BackerboardType>(
-                initialValue:
-                    _backerboardType, // Use value instead of initialValue
+                initialValue: _backerboardType,
                 decoration:
                     const InputDecoration(labelText: 'Backerboard Type'),
                 items: BackerboardType.values.map((type) {
@@ -214,8 +175,9 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
               const SizedBox(height: 24),
 
               // --- Waterproofing ---
+              // --- REMOVED: _buildSectionHeader(context, 'Waterproofing') ---
               DropdownButtonFormField<WaterproofingType>(
-                initialValue: _wallWaterproofingType, // Use value
+                initialValue: _wallWaterproofingType,
                 decoration:
                     const InputDecoration(labelText: 'Wall Waterproofing'),
                 items: WaterproofingType.values.map((type) {
@@ -227,7 +189,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<ShowerBaseType>(
-                initialValue: _showerBaseType, // Use value
+                initialValue: _showerBaseType,
                 decoration:
                     const InputDecoration(labelText: 'Shower Base Type'),
                 items: ShowerBaseType.values.map((type) {
@@ -238,7 +200,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<WaterproofingType>(
-                initialValue: _floorWaterproofingType, // Use value
+                initialValue: _floorWaterproofingType,
                 decoration: const InputDecoration(
                     labelText: 'Shower Floor Waterproofing'),
                 items: WaterproofingType.values.map((type) {
@@ -251,8 +213,9 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
               const SizedBox(height: 24),
 
               // --- Consumables ---
+              // --- REMOVED: _buildSectionHeader(context, 'Consumables') ---
               DropdownButtonFormField<String>(
-                initialValue: _thinsetTrowelSize, // Use value
+                initialValue: _thinsetTrowelSize,
                 decoration:
                     const InputDecoration(labelText: 'Thinset Trowel Size'),
                 items: thinsetTrowelCoverage.keys.map((trowelSize) {
@@ -270,6 +233,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
                 },
               ),
               const SizedBox(height: 16),
+
               TextFormField(
                   controller: _tileThicknessController,
                   decoration: const InputDecoration(
@@ -283,6 +247,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
                     return parseMixedNumber(value) < 0 ? 'Invalid' : null;
                   }),
               const SizedBox(height: 16),
+
               TextFormField(
                   controller: _levelerYieldController,
                   decoration: const InputDecoration(
@@ -309,6 +274,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
                     return parseMixedNumber(value) < 0 ? 'Invalid' : null;
                   }),
               const SizedBox(height: 16),
+
               TextFormField(
                   controller: _clipSpacingController,
                   decoration: const InputDecoration(
@@ -321,6 +287,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
                     if (value == null || value.isEmpty) return null;
                     return parseMixedNumber(value) < 0 ? 'Invalid' : null;
                   }),
+
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _saveAdvancedCalculations,
@@ -332,4 +299,6 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
       ),
     );
   }
+
+  // --- REMOVED: Unused _buildSectionHeader method ---
 }
