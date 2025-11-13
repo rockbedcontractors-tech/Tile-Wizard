@@ -7,8 +7,6 @@ import 'package:tile_wizard/models/client_model.dart';
 import 'package:tile_wizard/models/job_area_model.dart';
 import 'package:tile_wizard/models/job_model.dart';
 import 'package:tile_wizard/models/line_item_group.dart';
-import 'package:tile_wizard/models/material_package_model.dart'; // Import this
-import 'package:tile_wizard/models/sub_measurement.dart'; // Import this
 import 'package:tile_wizard/providers/job_provider.dart';
 import 'package:tile_wizard/screens/client_list_screen.dart';
 import 'package:tile_wizard/screens/result_screen.dart';
@@ -28,11 +26,6 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
   final _formKey = GlobalKey<FormState>();
   late Job _currentJob;
   bool _isLoading = true;
-
-  // --- THIS IS THE CORRECTED LOCAL STATE ---
-  Client? _localSelectedClient;
-  MaterialPackage? _localSelectedPackage;
-  // --- END OF FIX ---
 
   late TextEditingController _projectNameController;
   late TextEditingController _wastagePercentController;
@@ -55,48 +48,12 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
           .read<JobProvider>()
           .jobs
           .firstWhere((j) => j.id == widget.jobId);
-
-      // --- FIX: LOAD LINKS LOCALLY, THEN COPY ---
-      // 1. Load the links from the managed job into our local variables
-      _localSelectedClient = existingJob.client.value;
-      _localSelectedPackage = existingJob.selectedPackage.value;
-
-      // 2. Create a clean, unmanaged copy (it won't have links)
-      //    This now works because job_model.dart's copyWith is fixed
       _currentJob = existingJob.copyWith();
-      // --- END OF FIX ---
-
-      // 3. Deep-copy the embedded lists from the original job
-      initialGroups = (existingJob.itemGroups ?? [])
+      initialGroups = (_currentJob.itemGroups ?? [])
           .map((group) => LineItemGroup(
                 name: group.name,
-                items: (group.items ?? [])
-                    .map((item) => CustomLineItem(
-                          description: item.description,
-                          subtext: item.subtext,
-                          quantity: item.quantity,
-                          rate: item.rate,
-                          unit: item.unit,
-                          activity: item.activity,
-                          isTaxable: item.isTaxable,
-                        ))
-                    .toList(),
-                areas: (group.areas ?? [])
-                    .map((area) => JobArea(
-                          name: area.name,
-                          sqft: area.sqft,
-                          type: area.type,
-                          subMeasurements: (area.subMeasurements ?? [])
-                              .map((sub) => SubMeasurement(
-                                  length: sub.length,
-                                  width: sub.width,
-                                  unit: sub.unit))
-                              .toList(),
-                          tileLength: area.tileLength,
-                          tileWidth: area.tileWidth,
-                          groutSize: area.groutSize,
-                        ))
-                    .toList(),
+                items: List<CustomLineItem>.from(group.items ?? []),
+                areas: List<JobArea>.from(group.areas ?? []),
               ))
           .toList();
     } else {
@@ -108,10 +65,6 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
         taxRate: 0.0,
         wastagePercent: 10.0,
       );
-      // --- FIX: Initialize local links ---
-      _localSelectedClient = null;
-      _localSelectedPackage = null;
-      // --- END OF FIX ---
       initialGroups = [];
     }
     _currentJob.itemGroups = initialGroups;
@@ -164,7 +117,6 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     super.dispose();
   }
 
-  // --- THIS IS THE CORRECTED _selectClient METHOD ---
   void _selectClient() async {
     final selectedClient = await Navigator.push<Client>(
       context,
@@ -172,17 +124,11 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     );
     if (selectedClient != null && mounted) {
       setState(() {
-        // --- THIS IS THE FIX ---
-        // Set the local variable, DO NOT touch _currentJob
-        _localSelectedClient = selectedClient;
-        // REMOVED: _currentJob.client.value = selectedClient;
-        // --- END OF FIX ---
+        _currentJob.client.value = selectedClient;
       });
     }
   }
-  // --- END OF FIX ---
 
-  // --- THIS IS THE CORRECTED _saveAndNavigate METHOD ---
   void _saveAndNavigate() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) {
@@ -196,25 +142,13 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     _currentJob.wastagePercent =
         double.tryParse(_wastagePercentController.text);
 
-    // --- THIS IS THE FIX ---
-    // _currentJob is now 100% clean. We pass the links as
-    // separate arguments to the provider.
     if (widget.jobId != null) {
-      await jobProvider.updateJob(
-        _currentJob,
-        _localSelectedClient,
-        _localSelectedPackage,
-      );
+      await jobProvider.updateJob(_currentJob);
       jobIdToNavigate = _currentJob.id;
     } else {
-      final newManagedJob = await jobProvider.addJob(
-        _currentJob,
-        _localSelectedClient,
-        _localSelectedPackage,
-      );
-      jobIdToNavigate = newManagedJob.id;
+      final newSavedJob = await jobProvider.addJob(_currentJob);
+      jobIdToNavigate = newSavedJob.id;
     }
-    // --- END OF FIX ---
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -225,9 +159,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
       );
     }
   }
-  // --- END OF FIX ---
 
-  // --- Group/Area/Item Methods (No Changes) ---
   void _addGroup() {
     final nameController = TextEditingController();
     showDialog(
@@ -370,7 +302,6 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     });
     _updateTotal();
   }
-  // --- End Group/Area/Item Methods ---
 
   @override
   Widget build(BuildContext context) {
@@ -433,12 +364,8 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     );
   }
 
-  // --- THIS IS THE CORRECTED _buildProjectSetupCard METHOD ---
   Widget _buildProjectSetupCard() {
-    // --- THIS IS THE FIX ---
-    // Read the client name from our local variable
-    final clientName = _localSelectedClient?.name ?? 'Select Client';
-    // --- END OF FIX ---
+    final clientName = _currentJob.client.value?.name ?? 'Select Client';
     final primaryColor = Theme.of(context).colorScheme.primary;
     return Card(
       elevation: 2,
@@ -464,7 +391,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
             const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.person_outline),
-              title: Text(clientName), // <-- Uses our new local var
+              title: Text(clientName),
               trailing:
                   Icon(Icons.arrow_forward_ios, size: 16, color: primaryColor),
               contentPadding: EdgeInsets.zero,
@@ -480,7 +407,6 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
       ),
     );
   }
-  // --- END OF FIX ---
 
   Widget _buildGroupsSection() {
     final groups = _currentJob.itemGroups ?? [];
@@ -518,7 +444,8 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
       child: ExpansionTile(
         key: PageStorageKey('group_$groupIndex'),
         initiallyExpanded: true,
-        backgroundColor: theme.colorScheme.surfaceVariant.withAlpha(77),
+        backgroundColor:
+            theme.colorScheme.surfaceContainerHighest.withAlpha(77),
         collapsedBackgroundColor: theme.colorScheme.surface,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
@@ -548,6 +475,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
         childrenPadding:
             const EdgeInsets.symmetric(horizontal: 8.0).copyWith(bottom: 8.0),
         children: [
+          // --- Areas List ---
           _buildSectionHeader(
               context,
               'Areas (${group.groupAreaTotal.toStringAsFixed(2)} sqft)',
@@ -557,13 +485,15 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
                   dense: true,
                   title: Text('No areas added...',
                       style: TextStyle(fontStyle: FontStyle.italic)))
+              // --- NEW: SCROLLABLE CONTAINER ---
               : Container(
                   constraints: const BoxConstraints(
-                    maxHeight: 200.0,
+                    maxHeight: 200.0, // Set a max height
                   ),
                   child: ListView.builder(
                     shrinkWrap: true,
-                    physics: const ClampingScrollPhysics(),
+                    physics:
+                        const ClampingScrollPhysics(), // Use clamping scroll
                     itemCount: areas.length,
                     itemBuilder: (context, index) {
                       return _buildAreaTile(
@@ -572,6 +502,8 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
                   ),
                 ),
           const Divider(),
+
+          // --- Line Items List ---
           _buildSectionHeader(
               context,
               'Line Items (${_currencyFormat.format(group.groupTotal)})',
@@ -581,9 +513,10 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
                   dense: true,
                   title: Text('No line items added...',
                       style: TextStyle(fontStyle: FontStyle.italic)))
+              // --- NEW: SCROLLABLE CONTAINER ---
               : Container(
                   constraints: const BoxConstraints(
-                    maxHeight: 300.0,
+                    maxHeight: 300.0, // Max height for items
                   ),
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -728,6 +661,7 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     );
   }
 
+  // Helper for the Wastage field
   TextFormField _buildNumericTextField(
       TextEditingController controller, String label, String suffix) {
     return TextFormField(
