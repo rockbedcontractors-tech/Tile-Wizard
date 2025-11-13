@@ -43,7 +43,7 @@ class HomeScreen extends StatelessWidget {
         quoteNumber: '',
         projectName: 'New Invoice',
       );
-      final savedJob = await jobProvider.addJob(newJob, null, null);
+      final savedJob = await jobProvider.addJob(newJob);
       if (context.mounted) {
         Navigator.push(
           context,
