@@ -14,6 +14,7 @@ import 'package:tile_wizard/screens/widgets/add_edit_area_dialog.dart';
 import 'package:tile_wizard/screens/widgets/add_edit_line_item_dialog.dart';
 import 'package:tile_wizard/screens/widgets/app_drawer.dart';
 import 'package:uuid/uuid.dart';
+import 'package:tile_wizard/models/sub_measurement.dart';
 
 class ProjectEditorScreen extends StatefulWidget {
   final int? jobId;
@@ -41,21 +42,68 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
     _initializeEditor();
   }
 
+  // In lib/screens/project_editor_screen.dart
+
+  // In lib/screens/project_editor_screen.dart
+
+  // In lib/screens/project_editor_screen.dart
+
   Future<void> _initializeEditor() async {
     List<LineItemGroup> initialGroups = [];
+    List<Payment> initialPayments = []; // <-- ADD THIS
+
     if (widget.jobId != null) {
       final existingJob = context
           .read<JobProvider>()
           .jobs
           .firstWhere((j) => j.id == widget.jobId);
-      _currentJob = existingJob.copyWith();
-      initialGroups = (_currentJob.itemGroups ?? [])
+
+      _currentJob = existingJob.copyWith(); // This is the new "safe" copyWith
+
+      // Deep-copy the embedded lists from the *original* job
+      initialGroups = (existingJob.itemGroups ?? [])
           .map((group) => LineItemGroup(
                 name: group.name,
-                items: List<CustomLineItem>.from(group.items ?? []),
-                areas: List<JobArea>.from(group.areas ?? []),
+                items: (group.items ?? [])
+                    .map((item) => CustomLineItem(
+                          description: item.description,
+                          subtext: item.subtext,
+                          quantity: item.quantity,
+                          rate: item.rate,
+                          unit: item.unit,
+                          activity: item.activity,
+                          isTaxable: item.isTaxable,
+                        ))
+                    .toList(),
+                areas: (group.areas ?? [])
+                    .map((area) => JobArea(
+                          name: area.name,
+                          sqft: area.sqft,
+                          type: area.type,
+                          subMeasurements: (area.subMeasurements ?? [])
+                              .map((sub) => SubMeasurement(
+                                  length: sub.length,
+                                  width: sub.width,
+                                  unit: sub.unit))
+                              .toList(),
+                          tileLength: area.tileLength,
+                          tileWidth: area.tileWidth,
+                          groutSize: area.groutSize,
+                        ))
+                    .toList(),
               ))
           .toList();
+
+      // --- THIS IS THE HIDDEN BUG FIX ---
+      // We must ALSO deep-copy the payments list
+      initialPayments = (existingJob.payments ?? [])
+          .map((payment) => Payment(
+                amount: payment.amount,
+                date: payment.date,
+                method: payment.method,
+              ))
+          .toList();
+      // --- END OF FIX ---
     } else {
       _currentJob = Job(
         jobUUID: const Uuid().v4(),
@@ -66,8 +114,11 @@ class _ProjectEditorScreenState extends State<ProjectEditorScreen> {
         wastagePercent: 10.0,
       );
       initialGroups = [];
+      initialPayments = []; // <-- ADD THIS
     }
+
     _currentJob.itemGroups = initialGroups;
+    _currentJob.payments = initialPayments; // <-- ASSIGN THE CLEAN LIST
 
     _projectNameController.text = _currentJob.projectName ?? '';
     _wastagePercentController.text =
