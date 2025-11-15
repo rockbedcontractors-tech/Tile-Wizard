@@ -352,6 +352,7 @@ class _ResultScreenState extends State<ResultScreen> {
           appBar: AppBar(title: const Text('Error')),
           body: const Center(child: Text('Job not found.')));
     }
+    job.selectedPackage.loadSync();
 
     final isInvoice = job.isInvoice ?? false;
     final hasPayments = (job.payments ?? []).isNotEmpty;
