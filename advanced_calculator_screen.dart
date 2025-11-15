@@ -1,13 +1,13 @@
 // lib/screens/advanced_calculator_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:tile_wizard/models/job_model.dart';
 import 'package:tile_wizard/models/material_package_model.dart';
 import 'package:tile_wizard/providers/job_provider.dart';
 import 'package:tile_wizard/providers/material_provider.dart';
 import 'package:tile_wizard/utils/parsers.dart';
-import 'package:intl/intl.dart';
 
 // Trowel Size to Coverage Map
 final Map<String, double> thinsetTrowelCoverage = {
@@ -120,7 +120,18 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
         }
       });
     }
-
+    MaterialPackage? validSelectedPackage;
+    if (_selectedPackage != null) {
+      try {
+        // Find the package in the provider's list with the same ID
+        validSelectedPackage = materialProvider.packages
+            .firstWhere((pkg) => pkg.id == _selectedPackage!.id);
+      } catch (e) {
+        // The selected package is no longer in the provider's list
+        // (maybe it was deleted), so set it to null.
+        validSelectedPackage = null;
+      }
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Advanced Calculator'),
@@ -141,7 +152,7 @@ class _AdvancedCalculatorScreenState extends State<AdvancedCalculatorScreen> {
             children: [
               // --- Package Selection ---
               DropdownButtonFormField<MaterialPackage>(
-                initialValue: _selectedPackage,
+                initialValue: validSelectedPackage,
                 decoration: const InputDecoration(
                   labelText: 'Material Package',
                   border: OutlineInputBorder(),
