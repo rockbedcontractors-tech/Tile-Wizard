@@ -6,10 +6,11 @@ import 'package:tile_wizard/models/job_area_model.dart';
 import 'package:tile_wizard/models/line_item_group.dart';
 import 'package:tile_wizard/models/material_package_model.dart';
 import 'package:tile_wizard/models/sub_measurement.dart'; // For embedded
+import 'package:tile_wizard/models/material_item_model.dart'; // For cost calculation
 
 part 'job_model.g.dart';
 
-// --- ENUMS ---
+// --- ENUMS (All unchanged) ---
 enum PaymentMethod { cash, check, card, ach, other }
 
 extension PaymentMethodExtension on PaymentMethod {
@@ -162,11 +163,11 @@ class Job {
   WaterproofingType floorWaterproofingType;
 
   // --- Advanced Calculator Fields ---
-  double? thinsetCoverage; // Stored as sqft/bag (derived from Trowel)
-  double? tileThickness; // For grout calculation (inches)
-  double? clipSpacing; // <-- RESTORED
-  double? selfLevelerYield; // <-- NEW
-  double? selfLevelerThickness; // <-- NEW
+  double? thinsetCoverage;
+  double? tileThickness;
+  double? clipSpacing;
+  double? selfLevelerYield;
+  double? selfLevelerThickness;
 
   Job({
     this.jobUUID,
@@ -204,18 +205,22 @@ class Job {
     this.floorWaterproofingType = WaterproofingType.none,
     this.thinsetCoverage,
     this.tileThickness,
-    this.clipSpacing, // <-- RESTORED
-    this.selfLevelerYield, // <-- NEW
-    this.selfLevelerThickness, // <-- NEW
+    this.clipSpacing,
+    this.selfLevelerYield,
+    this.selfLevelerThickness,
   });
 
+  // --- THIS IS THE CORRECTED copyWith METHOD ---
+  // In lib/models/job_model.dart
+
+  // --- THIS IS THE CORRECTED copyWith METHOD ---
   Job copyWith({
     String? jobUUID,
     IsarLink<Client>? client,
     DateTime? creationDate,
     String? publicNotes,
-    List<LineItemGroup>? itemGroups,
-    List<Payment>? payments,
+    List<LineItemGroup>? itemGroups, // <-- We ARE keeping this
+    List<Payment>? payments, // <-- We ARE keeping this
     String? quoteNumber,
     String? invoiceNumber,
     bool? hidePrice,
@@ -247,16 +252,22 @@ class Job {
     WaterproofingType? floorWaterproofingType,
     double? thinsetCoverage,
     double? tileThickness,
-    double? clipSpacing, // <-- RESTORED
-    double? selfLevelerYield, // <-- NEW
-    double? selfLevelerThickness, // <-- NEW
+    double? clipSpacing,
+    double? selfLevelerYield,
+    double? selfLevelerThickness,
   }) {
     final newJob = Job(
       jobUUID: jobUUID ?? this.jobUUID,
       creationDate: creationDate ?? this.creationDate,
       publicNotes: publicNotes ?? this.publicNotes,
-      itemGroups: itemGroups ?? this.itemGroups,
-      payments: payments ?? this.payments,
+
+      // --- THIS IS THE FIX ---
+      // If new lists are passed, use them. If NOT, default to
+      // NEW EMPTY LISTS to prevent contamination.
+      itemGroups: itemGroups ?? [], // WAS: itemGroups ?? this.itemGroups
+      payments: payments ?? [], // WAS: payments ?? this.payments
+      // --- END OF FIX ---
+
       quoteNumber: quoteNumber ?? this.quoteNumber,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,
       hidePrice: hidePrice ?? this.hidePrice,
@@ -290,19 +301,19 @@ class Job {
           floorWaterproofingType ?? this.floorWaterproofingType,
       thinsetCoverage: thinsetCoverage ?? this.thinsetCoverage,
       tileThickness: tileThickness ?? this.tileThickness,
-      clipSpacing: clipSpacing ?? this.clipSpacing, // <-- RESTORED
-      selfLevelerYield: selfLevelerYield ?? this.selfLevelerYield, // <-- NEW
-      selfLevelerThickness:
-          selfLevelerThickness ?? this.selfLevelerThickness, // <-- NEW
+      clipSpacing: clipSpacing ?? this.clipSpacing,
+      selfLevelerYield: selfLevelerYield ?? this.selfLevelerYield,
+      selfLevelerThickness: selfLevelerThickness ?? this.selfLevelerThickness,
     );
     newJob.id = id;
     newJob.client.value = client?.value ?? this.client.value;
     newJob.selectedPackage.value =
-        selectedPackageValue ?? selectedPackage.value;
+        selectedPackageValue ?? this.selectedPackage.value;
     return newJob;
   }
+  // --- END OF CORRECTED copyWith ---
 
-  // --- Calculation getters ---
+  // --- Calculation getters (Unchanged) ---
   double _getAreaSumByType(List<AreaType> types) {
     return (itemGroups ?? []).fold(0.0, (groupSum, group) {
       final groupAreaSum = (group.areas ?? []).fold(0.0, (areaSum, area) {
@@ -323,8 +334,6 @@ class Job {
       _getAreaSumByType([AreaType.wall, AreaType.showerWall]);
   double get totalShowerWallArea => _getAreaSumByType([AreaType.showerWall]);
   double get totalShowerFloorArea => _getAreaSumByType([AreaType.showerFloor]);
-
-  // --- Financial Getters ---
   int get tilesNeeded {
     int totalTiles = 0;
     final groups = itemGroups ?? [];
@@ -333,7 +342,6 @@ class Job {
         final double tileL = area.tileLength ?? 0.0;
         final double tileW = area.tileWidth ?? 0.0;
         final double areaSqft = area.sqft ?? 0.0;
-
         if (tileL > 0 && tileW > 0 && areaSqft > 0) {
           final double tileAreaInSqFt = (tileL * tileW) / 144.0;
           final double areaWithWastage =
@@ -349,7 +357,6 @@ class Job {
   double get customItemsSubtotal => (itemGroups ?? [])
       .fold(0.0, (groupSum, group) => groupSum + group.groupTotal);
   double get initialSubtotal => materialCost + customItemsSubtotal;
-
   double get markupAmount {
     if (markupType == FinancialType.percentage) {
       return initialSubtotal * ((markupValue ?? 0.0) / 100);
@@ -359,7 +366,6 @@ class Job {
   }
 
   double get subtotalAfterMarkup => initialSubtotal + markupAmount;
-
   double get discountAmount {
     if (discountType == FinancialType.percentage) {
       return subtotalAfterMarkup * ((discountValue ?? 0.0) / 100);
@@ -369,7 +375,6 @@ class Job {
   }
 
   double get subtotalAfterDiscount => subtotalAfterMarkup - discountAmount;
-
   double get taxAmount {
     if (initialSubtotal <= 0) return 0.0;
     final taxableCustomItems = (itemGroups ?? []).fold(0.0, (groupSum, group) {
@@ -378,7 +383,6 @@ class Job {
       });
       return groupSum + groupTaxableTotal;
     });
-
     final taxableSubtotal = materialCost + taxableCustomItems;
     final taxableRatio =
         initialSubtotal == 0 ? 0 : taxableSubtotal / initialSubtotal;
@@ -387,11 +391,12 @@ class Job {
   }
 
   double get grandTotal => subtotalAfterDiscount + taxAmount;
+
   double get totalPayments => (payments ?? [])
       .fold(0.0, (sum, payment) => sum + (payment.amount ?? 0.0));
   double get balanceDue => grandTotal - totalPayments;
 
-  // --- Advanced Material Getters ---
+  // --- Advanced Material Getters (Unchanged) ---
   int get bagsOfThinsetNeeded {
     final coverage = thinsetCoverage ?? 85.0;
     if (coverage <= 0 || totalArea <= 0) return 0;
@@ -461,11 +466,9 @@ class Job {
     return (totalWallArea * screwsPerSqft).ceil();
   }
 
-  // --- NEW: Correct Self-Leveler Getter ---
   int get bagsOfSelfLevelerNeeded {
     final double yieldPerBag = selfLevelerYield ?? 0.0;
     final double thicknessInches = selfLevelerThickness ?? 0.0;
-
     if (yieldPerBag <= 0 || thicknessInches <= 0 || totalFloorArea <= 0) {
       return 0;
     }
@@ -474,27 +477,19 @@ class Job {
     return (volumeNeeded / yieldPerBag).ceil();
   }
 
-  // --- RESTORED: Leveling Clips Getter ---
   int get levelingClipsNeeded {
     final double spacing = clipSpacing ?? 0.0;
     if (spacing <= 0) return 0;
-
     double totalClips = 0;
     final groups = itemGroups ?? [];
-
     for (final group in groups) {
       for (final area in group.areas ?? []) {
-        // --- THIS IS THE FIX ---
-        // If the area is a shower floor, skip it (mosaics don't use clips)
         if (area.type == AreaType.showerFloor) {
           continue;
         }
-        // --- END OF FIX ---
-
         final double tileLengthIn = area.tileLength ?? 0.0;
         final double tileWidthIn = area.tileWidth ?? 0.0;
         final double areaSqFt = area.sqft ?? 0.0;
-
         if (tileLengthIn > 0 && tileWidthIn > 0 && areaSqFt > 0) {
           final clipsPerLength = (tileLengthIn / spacing).floor();
           final clipsPerWidth = (tileWidthIn / spacing).floor();
@@ -508,12 +503,10 @@ class Job {
     return totalClips.ceil();
   }
 
-  // Grout Volume getter (no change)
   double get groutVolumeNeeded {
     double totalVolumeCuIn = 0;
     final double jointDepthIn = tileThickness ?? 0.0;
     if (jointDepthIn <= 0) return 0.0;
-
     final groups = itemGroups ?? [];
     for (final group in groups) {
       for (final area in group.areas ?? []) {
@@ -521,7 +514,6 @@ class Job {
         final double tileLengthIn = area.tileLength ?? 0.0;
         final double tileWidthIn = area.tileWidth ?? 0.0;
         final double areaSqFt = area.sqft ?? 0.0;
-
         if (jointWidthIn > 0 &&
             tileLengthIn > 0 &&
             tileWidthIn > 0 &&
@@ -536,7 +528,50 @@ class Job {
         }
       }
     }
-
     return totalVolumeCuIn * (1 + ((wastagePercent ?? 15.0) / 100));
+  }
+
+  // --- "ITEMS PER UNIT" LOGIC (This is safe) ---
+
+  double _getMaterialCost(IsarLink<MaterialItem> link, int quantity) {
+    // This is the safety check that prevents the crash
+    if (!link.isLoaded) {
+      return 0.0;
+    }
+
+    final item = link.value;
+    if (item == null || (item.cost ?? 0.0) <= 0 || quantity <= 0) {
+      return 0.0;
+    }
+
+    final double cost = item.cost!;
+    final int itemsPerUnit = item.itemsPerUnit ?? 0;
+
+    if (itemsPerUnit > 0) {
+      final bagsNeeded = (quantity / itemsPerUnit).ceil();
+      return bagsNeeded * cost;
+    } else {
+      return cost * quantity;
+    }
+  }
+
+  double get totalAdvancedMaterialCost {
+    // This is safe because it's only called from ResultScreen,
+    // which loads the link first.
+    final pkg = selectedPackage.value; // No loadSync() here
+    if (pkg == null) {
+      return 0.0;
+    }
+
+    double totalCost = 0.0;
+    totalCost += _getMaterialCost(pkg.thinset, bagsOfThinsetNeeded);
+    totalCost += _getMaterialCost(pkg.grout, bagsOfGroutNeeded);
+    totalCost += _getMaterialCost(pkg.backerboard, sheetsOfBackerboardNeeded);
+    totalCost += _getMaterialCost(pkg.fasteners, screwsNeeded);
+    totalCost += _getMaterialCost(pkg.wallMembrane, rollsOfSheetWaterproofing);
+    totalCost += _getMaterialCost(pkg.floorMembrane, rollsOfSheetWaterproofing);
+    totalCost += _getMaterialCost(pkg.leveler, bagsOfSelfLevelerNeeded);
+    totalCost += _getMaterialCost(pkg.clips, levelingClipsNeeded);
+    return totalCost;
   }
 }
