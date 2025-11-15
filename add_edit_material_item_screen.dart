@@ -129,8 +129,7 @@ class _AddEditMaterialItemScreenState extends State<AddEditMaterialItemScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<MaterialCategory>(
-                initialValue:
-                    _selectedCategory, // Use value instead of initialValue
+                value: _selectedCategory, // Use value, not initialValue
                 items: MaterialCategory.values
                     .map((category) => DropdownMenuItem(
                           value: category,
